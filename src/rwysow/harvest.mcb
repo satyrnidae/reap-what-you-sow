@@ -1,0 +1,62 @@
+# Every function runs as the player, at the corner of the crop block. Setting #left to 0 first ends the ray.
+# Loot is the block's own table mined with the held hoe, so Fortune and Silk Touch apply as when breaking it by hand.
+
+function wheat {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:wheat[age=0]
+    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:wheat"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+}
+
+function carrots {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:carrots[age=0]
+    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:carrots"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+}
+
+function potatoes {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:potatoes[age=0]
+    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:potatoes"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+}
+
+function beetroots {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:beetroots[age=0]
+    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:beetroots"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+}
+
+function nether_wart {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:nether_wart[age=0]
+    playsound minecraft:block.nether_wart.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:nether_wart"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+}
+
+# Ancient farming. The finished flower resets to the first crop stage.
+function torchflower {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:torchflower_crop[age=0]
+    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:torchflower"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+}
+
+# Two blocks tall. Loot is mined from the lower half. The lower half is reset first: clearing the upper half first makes the
+# lower half pop as a second pitcher plant item. The upper half then breaks on its own and drops nothing, its table needs half=lower.
+function pitcher_plant {
+    scoreboard players set #left rwysow 0
+    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+    setblock ~ ~ ~ minecraft:pitcher_crop[age=0]
+    setblock ~ ~1 ~ minecraft:air replace
+    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
+    particle minecraft:block{block_state:"minecraft:pitcher_plant"} ~0.5 ~0.6 ~0.5 0.25 0.4 0.25 0 16
+}

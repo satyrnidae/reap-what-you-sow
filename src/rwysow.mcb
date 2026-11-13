@@ -1,0 +1,15 @@
+function load minecraft:load {
+    scoreboard objectives add rwysow dummy "Reap What You Sow"
+    # Config only defaults when unset, so /reload keeps a chosen value
+    execute unless score #config.enable_ancient_farming rwysow matches -2147483648..2147483647 run scoreboard players set #config.enable_ancient_farming rwysow 0
+}
+
+# Advancement reward for rwysow:use_hoe, runs as the player. Revoked first so the next click can fire it again.
+function on_use {
+    advancement revoke @s only rwysow:use_hoe
+    function rwysow:ray/start
+}
+
+function uninstall {
+    scoreboard objectives remove rwysow
+}
