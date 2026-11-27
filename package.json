@@ -1,11 +1,16 @@
 {
   "name": "reap-what-you-sow-dp",
+  "version": "0.1.0",
   "private": true,
   "description": "Harvest mature crops with a hoe and reset them to age 0, as a vanilla data pack",
   "scripts": {
     "build": "mcb build",
     "watch": "mcb watch",
-    "test": "python -m unittest discover -s tests -v"
+    "test": "npm run test:unit && npm run gametest",
+    "test:unit": "python -m unittest discover -s tests -v",
+    "gametest": "node gametest/run.js",
+    "gametest:fetch": "node gametest/fetch-server.js",
+    "check": "python scripts/check_cmds.py"
   },
   "dependencies": {
     "mc-build": "4.2.0"

@@ -1,62 +1,77 @@
-# Every function runs as the player, at the corner of the crop block. Setting #left to 0 first ends the ray.
+import ./crops.js
+import ../text/advancement.js
+
+# Granted by every harvest function, the first time a hoe harvests a crop
+advancement hoe_down {
+    "display": {
+        "icon": {
+            "id": "minecraft:wheat"
+        },
+        "title": <%advText.hoeDownTitle%>,
+        "description": <%advText.hoeDownDescription%>,
+        "show_toast": true,
+        "announce_to_chat": true
+    },
+    "parent": "rwysow:root",
+    "criteria": {
+        "harvest": {
+            "trigger": "minecraft:impossible"
+        }
+    },
+    "requirements": [
+        [ "harvest" ]
+    ]
+}
+
+# Every function runs as the player, at the corner of the crop block. The marker over it goes first, with its outline.
+# Each harvest costs the hoe 1 durability, see hoe.mcb, and grants the Hoe down! advancement.
 # Loot is the block's own table mined with the held hoe, so Fortune and Silk Touch apply as when breaking it by hand.
 
-function wheat {
-    scoreboard players set #left rwysow 0
-    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:wheat[age=0]
-    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:wheat"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+REPEAT (simpleCrops) as crop {
+    function <%crop.name%> {
+        execute positioned ~0.5 ~ ~0.5 as @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.3] at @s run function rwysow:marker/remove
+        loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
+        setblock ~ ~ ~ minecraft:<%crop.name%>[age=0]
+        function rwysow:hoe/wear
+        advancement grant @s only rwysow:harvest/hoe_down
+        playsound <%crop.sound%> block @a ~0.5 ~0.5 ~0.5
+        particle minecraft:block{block_state:"minecraft:<%crop.name%>"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+    }
 }
 
-function carrots {
-    scoreboard players set #left rwysow 0
-    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:carrots[age=0]
-    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:carrots"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
+# Cactus and sugar cane, at the base of the stack. Everything above the base is cut, top first: removing a block lets the one
+# above it pop as a second drop. Each block drops its own loot, mined with the held hoe. The base stays, and the hoe takes 1
+# durability for the whole cut.
+REPEAT (stackCrops) as crop {
+    function <%crop.name%> {
+        execute positioned ~0.5 ~ ~0.5 as @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.3] at @s run function rwysow:marker/remove
+        execute positioned ~ ~1 ~ run function rwysow:harvest/<%crop.name%>/cut
+        function rwysow:hoe/wear
+        advancement grant @s only rwysow:harvest/hoe_down
+        playsound <%crop.sound%> block @a ~0.5 ~0.5 ~0.5
+        particle minecraft:block{block_state:"minecraft:<%crop.name%>"} ~0.5 ~1 ~0.5 0.25 0.5 0.25 0 16
+    }
+
+    function <%crop.name%>/cut {
+        execute if block ~ ~1 ~ minecraft:<%crop.name%> positioned ~ ~1 ~ run function rwysow:harvest/<%crop.name%>/cut
+        REPEAT (crop.top ? [crop.top] : []) as top {
+            execute if block ~ ~1 ~ <%top%> run loot spawn ~0.5 ~1.5 ~0.5 mine ~ ~1 ~ mainhand
+            execute if block ~ ~1 ~ <%top%> run setblock ~ ~1 ~ minecraft:air
+        }
+        loot spawn ~0.5 ~0.5 ~0.5 mine ~ ~ ~ mainhand
+        setblock ~ ~ ~ minecraft:air
+    }
 }
 
-function potatoes {
-    scoreboard players set #left rwysow 0
+# Two blocks tall at age 4. Loot is mined from the lower half. The lower half is reset first: clearing the upper half first makes
+# the lower half pop as a second drop. The upper half then breaks on its own and drops nothing, its table needs half=lower.
+function pitcher_crop {
+    execute positioned ~0.5 ~ ~0.5 as @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.3] at @s run function rwysow:marker/remove
     loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:potatoes[age=0]
-    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:potatoes"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
-}
-
-function beetroots {
-    scoreboard players set #left rwysow 0
-    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:beetroots[age=0]
-    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:beetroots"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
-}
-
-function nether_wart {
-    scoreboard players set #left rwysow 0
-    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:nether_wart[age=0]
-    playsound minecraft:block.nether_wart.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:nether_wart"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
-}
-
-# Ancient farming. The finished flower resets to the first crop stage.
-function torchflower {
-    scoreboard players set #left rwysow 0
-    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:torchflower_crop[age=0]
-    playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:torchflower"} ~0.5 ~0.3 ~0.5 0.25 0.2 0.25 0 12
-}
-
-# Two blocks tall. Loot is mined from the lower half. The lower half is reset first: clearing the upper half first makes the
-# lower half pop as a second pitcher plant item. The upper half then breaks on its own and drops nothing, its table needs half=lower.
-function pitcher_plant {
-    scoreboard players set #left rwysow 0
-    loot spawn ~0.5 ~0.1 ~0.5 mine ~ ~ ~ mainhand
-    setblock ~ ~ ~ minecraft:pitcher_crop[age=0]
+    setblock ~ ~ ~ minecraft:pitcher_crop[age=0,half=lower]
     setblock ~ ~1 ~ minecraft:air replace
+    function rwysow:hoe/wear
+    advancement grant @s only rwysow:harvest/hoe_down
     playsound minecraft:block.crop.break block @a ~0.5 ~0.5 ~0.5
-    particle minecraft:block{block_state:"minecraft:pitcher_plant"} ~0.5 ~0.6 ~0.5 0.25 0.4 0.25 0 16
+    particle minecraft:block{block_state:"minecraft:pitcher_crop"} ~0.5 ~0.6 ~0.5 0.25 0.4 0.25 0 16
 }

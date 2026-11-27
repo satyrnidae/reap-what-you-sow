@@ -1,0 +1,11 @@
+import ./crops.js
+
+# Run at the origin of a marker, the bottom center of its box. Draws the box as 12 block display edges, which found/<crop>
+# only calls when the marker has no outline yet. The tick function removes outlines whose marker is gone.
+REPEAT (cropNames) as name {
+    function <%name%> {
+        REPEAT (outlineCmds[name]) as cmd {
+            <%cmd%>
+        }
+    }
+}

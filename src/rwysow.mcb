@@ -1,15 +1,64 @@
+import ./config.js
+import text/advancement.js
+import text/core.js
+
 function load minecraft:load {
     scoreboard objectives add rwysow dummy "Reap What You Sow"
     # Config only defaults when unset, so /reload keeps a chosen value
-    execute unless score #config.enable_ancient_farming rwysow matches -2147483648..2147483647 run scoreboard players set #config.enable_ancient_farming rwysow 0
+    execute unless score #config.enable_pitcher_crop rwysow matches -2147483648..2147483647 run scoreboard players set #config.enable_pitcher_crop rwysow 0
+    # 1 draws a black wireframe of the marker box on the crop being looked at
+    execute unless score #config.show_outline rwysow matches -2147483648..2147483647 run scoreboard players set #config.show_outline rwysow 1
 }
 
-# Advancement reward for rwysow:use_hoe, runs as the player. Revoked first so the next click can fire it again.
-function on_use {
-    advancement revoke @s only rwysow:use_hoe
-    function rwysow:ray/start
-}
-
+# Removes everything the pack created, then disables it. Run as an operator: /function rwysow:uninstall
 function uninstall {
+    tellraw @s <%coreText.uninstalling%>
+    kill @e[type=minecraft:interaction,tag=rwysow.marker]
+    kill @e[type=minecraft:block_display,tag=rwysow.outline]
+    kill @e[type=minecraft:item,tag=rwysow.tmp]
+    tag @a remove rwysow.ready
+    data remove storage rwysow:tmp h
+    data remove storage rwysow:tmp t
+    advancement revoke @a only rwysow:use/on_interact
+    advancement revoke @a through rwysow:root
+    REPEAT (eqObjectives) as objective {
+        scoreboard objectives remove <%objective%>
+    }
+    # rwysow goes last, it holds the result of the disable that the messages below read
+    execute store success score #uninstall rwysow run datapack disable "file/<%config.packName%>"
+    execute unless score #uninstall rwysow matches 1 run tellraw @s <%coreText.packFolder%>
+    execute if score #uninstall rwysow matches 1 run tellraw @s <%coreText.uninstalled%>
     scoreboard objectives remove rwysow
+}
+
+# The only function in minecraft:tick. Nothing below runs unless a player holds a hoe or a marker exists, and the outlines are
+# removed together with their marker, see marker/remove, so there is no scan for them here.
+function tick minecraft:tick {
+    # Markers only have to exist before the click, so the ray runs every other tick
+    execute store result score #g rwysow run time query gametime
+    eq #g rwysow %= 2
+    execute if score #g rwysow matches 0 as @a[predicate=rwysow:marker/ready] at @s run function rwysow:ray/track
+    execute if entity @e[type=minecraft:interaction,tag=rwysow.marker] run function rwysow:marker/age
+}
+
+# Datapack advancement, see https://mc-datapacks.github.io/en/conventions/datapack_advancement.html. The tick trigger grants it
+# at once, the namespace node it hangs off is global:satyrnidae/author from global.mcb. Hoe down! lives in harvest.mcb.
+advancement root {
+    "display": {
+        "frame": "challenge",
+        "icon": {
+            "id": "minecraft:diamond_hoe"
+        },
+        "title": <%advText.rootTitle%>,
+        "description": <%advText.rootDescription%>,
+        "announce_to_chat": false,
+        "show_toast": false,
+        "hidden": false
+    },
+    "parent": "global:satyrnidae/author",
+    "criteria": {
+        "adv_criteria": {
+            "trigger": "minecraft:tick"
+        }
+    }
 }

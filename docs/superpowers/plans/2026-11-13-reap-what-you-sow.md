@@ -16,7 +16,7 @@
 - Namespace `rwysow`, name Reap What You Sow.
 - Advancement-driven, no tick scanning. No entities, no resource pack.
 - Crops v1: wheat, carrots, potatoes at max age 7; beetroots, nether_wart at max age 3. Nothing else, except ancient farming below.
-- Ancient farming: torchflower and pitcher plant, only when score `#config.enable_ancient_farming` on objective `rwysow` is 1. Default 0, `load` must not overwrite a set value. Mature form is the finished block `minecraft:torchflower` or `minecraft:pitcher_plant`, harvest sets `torchflower_crop[age=0]` or `pitcher_crop[age=0]`, and only with farmland directly below.
+- Ancient farming: `minecraft:torchflower_crop` at age 1 and `minecraft:pitcher_crop` at age 4, only when score `#config.enable_pitcher_crop` on objective `rwysow` is 1. Default 0, `load` must not overwrite a set value. Harvest sets age 0. Corrected 2026-11-13: the crop blocks are the target, not the finished flowers, and there is no farmland check.
 - Loot identical to breaking the crop with the held hoe. Crop returns to age 0, same block.
 - Never harvest immature crops. Never fire without a hoe in the main hand.
 - Commits are always signed, never `--no-gpg-sign`. Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
@@ -29,7 +29,7 @@
 - Two mature crops side by side, click one: only that one resets.
 - Wall or other solid block between eyes and a mature crop: ray stops at the solid, nothing harvested.
 - Adventure mode: no harvest. Survival and creative: harvest. Fortune on the hoe raises drops, silk touch does not change them.
-- Config unset or 0: torchflower and pitcher plant ignored. Torchflower on grass or in a pot, pitcher plant on dirt: ignored even with config 1.
+- Config unset or 0: torchflower_crop and pitcher_crop ignored. Pitcher crop upper half clicked with config 1: harvests once.
 - `/reload` with the config at 1: stays 1.
 
 All paths below are relative to `C:\Users\maskr\sandbox\reap-what-you-sow-dp`.
@@ -63,7 +63,7 @@ No unit test framework fits a data pack. Verification is two things: `scripts/ch
 - Produces: scoreboard objective `rwysow`, function `rwysow:load` tagged `minecraft:load`, function `rwysow:uninstall`.
 
 - [ ] **Step 1: Write the config files, copying shape from `wolves-beyond-dp`.** `package.json` name `reap-what-you-sow-dp`, scripts `build: mcb build` and `watch: mcb watch`, dependency `mc-build` pinned `4.2.0`. `mcb.config.js` with `generatedDirName: '__generated__'`, `formatVersion: 121`, `internalScoreboardName: 'rwysow'`, and a header line crediting mc-build. `pack.mcmeta` with `min_format` and `max_format` 121 and description `Reap What You Sow`. `.gitignore` with `node_modules`, `.build`, `.mcb`, `data/rwysow/function`, `data/minecraft/tags/function/load.json`.
-- [ ] **Step 2: Write `src/rwysow.mcb`.** `function load minecraft:load` adds objective `rwysow`, then sets `#config.enable_ancient_farming rwysow` to 0 only if it has no value yet (`execute unless score #config.enable_ancient_farming rwysow matches -2147483648..2147483647 run scoreboard players set ...`); `function uninstall` removes the objective.
+- [ ] **Step 2: Write `src/rwysow.mcb`.** `function load minecraft:load` adds objective `rwysow`, then sets `#config.enable_pitcher_crop rwysow` to 0 only if it has no value yet (`execute unless score #config.enable_pitcher_crop rwysow matches -2147483648..2147483647 run scoreboard players set ...`); `function uninstall` removes the objective.
 - [ ] **Step 3: Install and build.**
 
 Run: `npm install && npm run build`
@@ -138,21 +138,23 @@ git commit -m "feat: raycast harvest for five crops"
 
 ### Task 3b: Ancient farming, config gated
 
+> Corrected 2026-11-13: torchflower is not harvested, its crop grows into the finished plant. Pitcher harvests `pitcher_crop[age=4,half=lower|upper]` with `harvest/pitcher_crop`. Finished pitcher_plant references below are superseded; see the spec and `src/rwysow/ray.mcb`.
+
 **Files:**
 - Modify: `src/rwysow/ray.mcb` (two gated lines in `step`), `src/rwysow/harvest.mcb`
 
 **Interfaces:**
-- Consumes: `rwysow:ray/step` and the harvest pattern from Task 3, score `#config.enable_ancient_farming rwysow` from Task 1.
+- Consumes: `rwysow:ray/step` and the harvest pattern from Task 3, score `#config.enable_pitcher_crop rwysow` from Task 1.
 - Produces: `rwysow:harvest/torchflower` and `rwysow:harvest/pitcher_plant`, run as the player, positioned at the lower block of the plant.
 
-- [ ] **Step 1: Add to `step`, before the passable check.** Each line carries `if score #config.enable_ancient_farming rwysow matches 1`. Torchflower: `if block ~ ~ ~ minecraft:torchflower if block ~ ~-1 ~ minecraft:farmland` runs `harvest/torchflower`. Pitcher plant lower half: `if block ~ ~ ~ minecraft:pitcher_plant[half=lower] if block ~ ~-1 ~ minecraft:farmland` runs `harvest/pitcher_plant`. Pitcher plant upper half: `if block ~ ~ ~ minecraft:pitcher_plant[half=upper] if block ~ ~-2 ~ minecraft:farmland` runs `positioned ~ ~-1 ~ run function rwysow:harvest/pitcher_plant`. Each match sets `#left rwysow` to 0 like the other crops.
+- [ ] **Step 1: Add to `step`, before the passable check.** Each line carries `if score #config.enable_pitcher_crop rwysow matches 1`. Torchflower: `if block ~ ~ ~ minecraft:torchflower if block ~ ~-1 ~ minecraft:farmland` runs `harvest/torchflower`. Pitcher plant lower half: `if block ~ ~ ~ minecraft:pitcher_plant[half=lower] if block ~ ~-1 ~ minecraft:farmland` runs `harvest/pitcher_plant`. Pitcher plant upper half: `if block ~ ~ ~ minecraft:pitcher_plant[half=upper] if block ~ ~-2 ~ minecraft:farmland` runs `positioned ~ ~-1 ~ run function rwysow:harvest/pitcher_plant`. Each match sets `#left rwysow` to 0 like the other crops.
 - [ ] **Step 2: Write `function torchflower` in `harvest.mcb`.** Same shape as `wheat`: loot with `mine` at the aligned block, then `setblock ~ ~ ~ minecraft:torchflower_crop[age=0]`, sound, particles.
 - [ ] **Step 3: Write `function pitcher_plant` in `harvest.mcb`.** Loot with `mine` from the lower block, `setblock ~ ~1 ~ minecraft:air replace` first, then `setblock ~ ~ ~ minecraft:pitcher_crop[age=0]`, sound, particles. Builder checks in game which `half` state `pitcher_crop[age=0]` needs and that no upper half is left behind.
 - [ ] **Step 4: Build and test.**
 
 Checklist and expected results:
   - Config 0 or unset: hoe click on a planted torchflower and on a pitcher plant, both on farmland: nothing happens.
-  - `/scoreboard players set #config.enable_ancient_farming rwysow 1`: torchflower on farmland drops a torchflower and becomes a `torchflower_crop` at age 0.
+  - `/scoreboard players set #config.enable_pitcher_crop rwysow 1`: torchflower on farmland drops a torchflower and becomes a `torchflower_crop` at age 0.
   - Pitcher plant on farmland, click the lower half: drops its loot, becomes a single age 0 `pitcher_crop`, no upper half remains.
   - Same, click the upper half: identical result.
   - Config 1, torchflower on grass, torchflower in a pot, pitcher plant on dirt: nothing happens.

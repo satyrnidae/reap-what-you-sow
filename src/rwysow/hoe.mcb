@@ -1,0 +1,75 @@
+# Hoe wear, as the player. A harvest costs exactly 1 durability, survival only, any hoe. A loot function cannot do this,
+# set_damage works on a fraction of the max durability and the max is unknown for a modded hoe. So the damage is read off
+# a copy of the stack in a throwaway item entity, raised by 1 and put back. The vanilla rules are redone by hand: an
+# unbreakable hoe never wears, and Unbreaking level L spares the hoe with a chance of L in L + 1. Enchantment effects added by
+# other data packs are not seen.
+
+# Survival players, the only ones whose hoe wears down
+predicate survival {
+    "type": "minecraft:entity_properties",
+    "entity": "this",
+    "predicate": {
+        "minecraft:type_specific/player": {
+            "gamemode": ["survival"]
+        }
+    }
+}
+
+# Survival player whose main hand holds an item with 1 durability left or less. Works for any hoe, modded ones included.
+predicate last_point {
+    "type": "minecraft:entity_properties",
+    "entity": "this",
+    "predicate": {
+        "minecraft:equipment": {
+            "mainhand": {
+                "predicates": {
+                    "minecraft:damage": {
+                        "durability": {
+                            "max": 1
+                        }
+                    }
+                }
+            }
+        },
+        "minecraft:type_specific/player": {
+            "gamemode": ["survival"]
+        }
+    }
+}
+
+function wear {
+    execute unless predicate rwysow:hoe/survival run return 0
+    execute if items entity @s weapon.mainhand *[minecraft:unbreakable] run return 0
+    summon minecraft:item ~ ~ ~ {Item:{id:"minecraft:stone",count:1},PickupDelay:32767s,Tags:["rwysow.tmp"]}
+    # Players have no equipment path in their data, so the copy goes through the slot commands. If it fails the hand is empty
+    # or the summon did not happen, and the stone must never be written back.
+    execute store success score #copied rwysow run item replace entity @n[type=minecraft:item,tag=rwysow.tmp,distance=..1] contents from entity @s weapon.mainhand
+    execute unless score #copied rwysow matches 1 run return run kill @e[type=minecraft:item,tag=rwysow.tmp,distance=..1]
+    # Unbreaking level, 0 when there is none. A failed data get leaves the score alone, so it starts at 0. roll turns it into
+    # level + 1 and rolls #roll, which is 0 with a chance of 1 in level + 1, and only then does the hoe take damage.
+    scoreboard players set #unb rwysow 0
+    execute store result score #unb rwysow run data get entity @n[type=minecraft:item,tag=rwysow.tmp,distance=..1] Item.components."minecraft:enchantments"."minecraft:unbreaking"
+    execute if score #unb rwysow matches 1.. run function rwysow:hoe/roll
+    execute if score #unb rwysow matches 2.. unless score #roll rwysow matches 0 run return run kill @e[type=minecraft:item,tag=rwysow.tmp,distance=..1]
+    execute if predicate rwysow:hoe/last_point run return run function rwysow:hoe/break
+    # No damage component means undamaged, same as above
+    scoreboard players set #damage rwysow 0
+    execute store result score #damage rwysow run data get entity @n[type=minecraft:item,tag=rwysow.tmp,distance=..1] Item.components."minecraft:damage"
+    scoreboard players add #damage rwysow 1
+    execute store result entity @n[type=minecraft:item,tag=rwysow.tmp,distance=..1] Item.components."minecraft:damage" int 1 run scoreboard players get #damage rwysow
+    item replace entity @s weapon.mainhand from entity @n[type=minecraft:item,tag=rwysow.tmp,distance=..1] contents
+    kill @e[type=minecraft:item,tag=rwysow.tmp,distance=..1]
+}
+
+function roll {
+    scoreboard players add #unb rwysow 1
+    execute store result score #roll rwysow run random value 0..2147483646
+    scoreboard players operation #roll rwysow %= #unb rwysow
+}
+
+# The last point of durability is spent, so the hoe breaks
+function break {
+    kill @e[type=minecraft:item,tag=rwysow.tmp,distance=..1]
+    item replace entity @s weapon.mainhand with minecraft:air
+    playsound minecraft:entity.item.break player @a ~ ~ ~ 1 1
+}

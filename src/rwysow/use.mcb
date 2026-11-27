@@ -1,0 +1,30 @@
+# Fires on a right-click of any interaction entity while holding a hoe. The reward harvests what the player is looking at.
+advancement on_interact {
+    "criteria": {
+        "use": {
+            "trigger": "minecraft:player_interacted_with_entity",
+            "conditions": {
+                "player": "rwysow:marker/ready",
+                "entity": {
+                    "type": "minecraft:entity_properties",
+                    "entity": "this",
+                    "predicate": {
+                        "minecraft:entity_type": "minecraft:interaction"
+                    }
+                }
+            }
+        }
+    },
+    "requirements": [
+        [ "use" ]
+    ],
+    "rewards": {
+        "function": "rwysow:use/on_use"
+    }
+}
+
+# Runs as the player. Revoked first so the next click can fire it again.
+function on_use {
+    advancement revoke @s only rwysow:use/on_interact
+    function rwysow:ray/harvest
+}

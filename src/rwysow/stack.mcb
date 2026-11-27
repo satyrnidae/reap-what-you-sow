@@ -1,0 +1,53 @@
+import ../config.js
+import ./crops.js
+
+# Cactus and sugar cane. A stack of 2 or more gets one marker over all of it, and a click on any block of it cuts the stack down to
+# its base, see harvest.mcb. A lone block gets nothing. The ray ends on the first block of the stack it hits, which can be any
+# of them, so found walks down to the base first and everything else runs there.
+REPEAT (stackCrops) as crop {
+    # Run at the hit block, aligned. Zeroes #left, which ends the ray, like the found functions of the other crops.
+    function <%crop.name%>/found {
+        execute if block ~ ~-1 ~ minecraft:<%crop.name%> positioned ~ ~-1 ~ run return run function rwysow:stack/<%crop.name%>/found
+        execute unless block ~ ~1 ~ minecraft:<%crop.name%> run return 0
+        scoreboard players set #left rwysow 0
+        execute if score #mode rwysow matches 1 run return run function rwysow:harvest/<%crop.name%>
+        execute positioned ~0.5 ~-<%markerMargin%> ~0.5 unless entity @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.3] run function rwysow:stack/<%crop.name%>/mark
+        execute positioned ~0.5 ~ ~0.5 run scoreboard players set @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.3] rwysow <%config.markerTicks%>
+    }
+
+    # At the base, a new stack. Counts it, up to stackMax, and sizes the marker and its outline to it. The box is the stack plus
+    # the margin on both ends, in millionths so the score holds it.
+    function <%crop.name%>/mark {
+        scoreboard players set #h rwysow 0
+        execute positioned ~-0.5 ~<%markerMargin%> ~-0.5 run function rwysow:stack/<%crop.name%>/count
+        scoreboard players operation #hs rwysow = #h rwysow
+        eq #hs rwysow *= 1000000
+        scoreboard players add #hs rwysow <%markerMargin * 2000000%>
+        scoreboard players operation #ts rwysow = #hs rwysow
+        scoreboard players remove #ts rwysow 15625
+        execute store result storage rwysow:tmp h float 0.000001 run scoreboard players get #hs rwysow
+        execute store result storage rwysow:tmp t float 0.000001 run scoreboard players get #ts rwysow
+        function rwysow:stack/spawn with storage rwysow:tmp
+        execute if score #config.show_outline rwysow matches 1 run function rwysow:stack/outline with storage rwysow:tmp
+    }
+
+    function <%crop.name%>/count {
+        REPEAT (crop.top ? [crop.top] : []) as top {
+            execute unless block ~ ~ ~ minecraft:<%crop.name%> run return run execute if block ~ ~ ~ <%top%> run scoreboard players add #h rwysow 1
+        }
+        execute unless block ~ ~ ~ minecraft:<%crop.name%> run return 0
+        scoreboard players add #h rwysow 1
+        execute if score #h rwysow matches ..<%stackMax - 1%> positioned ~ ~1 ~ run function rwysow:stack/<%crop.name%>/count
+    }
+}
+
+# Run at the bottom center of the box. A float macro value comes with its f, so the height has none here.
+function spawn {
+    $summon minecraft:interaction ~ ~ ~ {width:<%markerWidth%>f,height:$(h),response:true,Tags:["rwysow.marker"]}
+}
+
+function outline {
+    REPEAT (stackOutlineCmds) as cmd {
+        <%cmd%>
+    }
+}

@@ -1,0 +1,33 @@
+# Each marker carries a ttl in the rwysow objective, refreshed by the ray every pass. Expired markers go, and so do markers
+# with no hoe holder near: a leftover one would swallow the click of a player who put the hoe away. Only runs while a marker
+# exists, see tick.
+
+# Hoe in the main hand, survival or creative
+predicate ready {
+    "type": "minecraft:entity_properties",
+    "entity": "this",
+    "predicate": {
+        "minecraft:equipment": {
+            "mainhand": {
+                "items": "#minecraft:hoes"
+            }
+        },
+        "minecraft:type_specific/player": {
+            "gamemode": ["survival", "creative"]
+        }
+    }
+}
+
+function age {
+    scoreboard players remove @e[type=minecraft:interaction,tag=rwysow.marker] rwysow 1
+    execute as @e[type=minecraft:interaction,tag=rwysow.marker,scores={rwysow=..0}] at @s run function rwysow:marker/remove
+    tag @a remove rwysow.ready
+    tag @a[predicate=rwysow:marker/ready] add rwysow.ready
+    execute as @e[type=minecraft:interaction,tag=rwysow.marker] at @s unless entity @a[tag=rwysow.ready,distance=..6] run function rwysow:marker/remove
+}
+
+# As and at a marker. Takes its outline with it, which sits at the same spot, so no tick has to look for stray outlines.
+function remove {
+    kill @e[type=minecraft:block_display,tag=rwysow.outline,distance=..0.01]
+    kill @s
+}

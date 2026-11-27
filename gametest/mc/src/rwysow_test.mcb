@@ -1,0 +1,355 @@
+# Test namespace, never part of a release. Every scenario here is run by a gametest test instance, see gametest/tests.js for the list and
+# the ticks each step runs at, and gametest/run.js to run them headless, npm test. A scenario is plain functions that build a stage at the
+# origin marker and check it, setting #ok rwysow_test to 0 when something is wrong. There is no player on a headless server, so an armor
+# stand stands in for one: it looks along the same ray, and the pack's harvest runs as it. Hoe wear and the advancement need a real
+# player and are not covered here. The generated poll functions at the end call the scenarios at the right ticks and power the accept or
+# fail test block.
+
+import ../../tests.js
+
+function load minecraft:load {
+	scoreboard objectives add rwysow_test dummy
+	# Ticks since a test started, on the marker at its command block
+	scoreboard objectives add gt.age dummy
+}
+
+#region Library
+# Clears the arena of the last test and stands the looker, an armor stand, at the origin. Every test runs positioned at its own origin,
+# see tests.js, so a test that starts late cannot meet another one's leftovers. The floor is stone 2 below, crops go 2 blocks south on a
+# base 1 below. Config goes back to its defaults, outline on and pitcher crop off.
+function lib/begin {
+	execute positioned ~0.5 ~ ~0.5 run kill @e[type=minecraft:item,distance=..6]
+	kill @e[tag=tt,distance=..6]
+	kill @e[type=minecraft:interaction,tag=rwysow.marker,distance=..6]
+	kill @e[type=minecraft:block_display,tag=rwysow.outline,distance=..6]
+	fill ~-3 ~-2 ~-3 ~5 ~6 ~5 minecraft:air
+	fill ~-3 ~-2 ~-3 ~5 ~-2 ~5 minecraft:stone
+	summon minecraft:armor_stand ~0.5 ~ ~0.5 {NoGravity:1b,Invisible:1b,Tags:["tt","tt.look"]}
+	# What the looker faces, the middle of the crop cell and of the cell above it. Relative coordinates after anchored eyes missed it
+	summon minecraft:marker ~0.5 ~0.5 ~2.5 {Tags:["tt","tt.target_low"]}
+	summon minecraft:marker ~0.5 ~1.5 ~2.5 {Tags:["tt","tt.target_up"]}
+	scoreboard players set #config.show_outline rwysow 1
+	scoreboard players set #config.enable_pitcher_crop rwysow 0
+}
+
+# The looker aims at the middle of a cell half a block (low) or a block and a half (up) above the floor of the crop cell, 2 blocks south. Mark is what the tick does for a hoe holder,
+# harvest is what the click does
+REPEAT ([{n: "low"}, {n: "up"}]) as at {
+	REPEAT ([{m: "mark", fn: "track"}, {m: "harvest", fn: "harvest"}]) as mode {
+		function lib/look_<%at.n%>_<%mode.m%> {
+			execute as @e[type=minecraft:armor_stand,tag=tt.look,distance=..3,limit=1] at @s anchored eyes facing entity @e[type=minecraft:marker,tag=tt.target_<%at.n%>,distance=..4,limit=1] feet anchored feet run function rwysow:ray/<%mode.fn%>
+		}
+	}
+}
+
+function lib/count {
+	execute positioned ~0.5 ~ ~0.5 store result score #markers rwysow_test if entity @e[type=minecraft:interaction,tag=rwysow.marker,distance=..6]
+	execute positioned ~0.5 ~ ~0.5 store result score #outlines rwysow_test if entity @e[type=minecraft:block_display,tag=rwysow.outline,distance=..6]
+}
+
+# Fails unless there is exactly one marker, with its outline of 12 edges, over the cell at ~ ~ ~2
+function lib/expect_marker {
+	function rwysow_test:lib/count
+	execute unless score #markers rwysow_test matches 1 run scoreboard players set #ok rwysow_test 0
+	execute unless score #outlines rwysow_test matches 12 run scoreboard players set #ok rwysow_test 0
+	execute positioned ~0.5 ~ ~2.5 unless entity @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.5] run scoreboard players set #ok rwysow_test 0
+}
+
+function lib/expect_none {
+	function rwysow_test:lib/count
+	execute unless score #markers rwysow_test matches 0 run scoreboard players set #ok rwysow_test 0
+	execute unless score #outlines rwysow_test matches 0 run scoreboard players set #ok rwysow_test 0
+}
+
+# Printed when a step fails. A headless server logs say and not tellraw
+function lib/dump {
+	function rwysow_test:lib/count
+	data merge storage rwysow_test:dump {markers:0,outlines:0}
+	execute store result storage rwysow_test:dump markers int 1 run scoreboard players get #markers rwysow_test
+	execute store result storage rwysow_test:dump outlines int 1 run scoreboard players get #outlines rwysow_test
+	function rwysow_test:lib/dump_say with storage rwysow_test:dump
+	execute unless score #config.enable_pitcher_crop rwysow matches 1 run say gt dump pitcher crop config is not 1
+	execute if block ~ ~ ~2 minecraft:pitcher_crop run say gt dump pitcher crop in the lower cell
+	execute if block ~ ~ ~2 minecraft:pitcher_crop[age=4,half=lower] run say gt dump lower cell is age 4 lower
+	execute if block ~ ~1 ~2 minecraft:pitcher_crop run say gt dump pitcher crop in the upper cell
+	execute if block ~ ~ ~2 minecraft:air run say gt dump lower cell is air
+	REPEAT (0, 4) as a {
+		execute if block ~ ~ ~2 minecraft:pitcher_crop[age=<%a%>,half=lower] run say gt dump lower cell age <%a%> lower
+		execute if block ~ ~ ~2 minecraft:pitcher_crop[age=<%a%>,half=upper] run say gt dump lower cell age <%a%> UPPER
+	}
+	REPEAT (0, 7) as w {
+		execute if block ~ ~ ~2 minecraft:wheat[age=<%w%>] run say gt dump wheat age <%w%> in the crop cell
+	}
+	execute if block ~ ~-1 ~2 minecraft:farmland run say gt dump farmland under the crop
+	execute unless block ~ ~-2 ~2 minecraft:stone run say gt dump no stone floor
+	execute if entity @e[type=minecraft:armor_stand,tag=tt.look,distance=..3] run say gt dump the looker is there
+	execute if entity @e[type=minecraft:interaction,tag=rwysow.marker] run say gt dump a marker exists somewhere
+	execute as @e[type=minecraft:interaction,tag=rwysow.marker] run say gt dump marker at @s
+	execute as @e[type=minecraft:armor_stand,tag=tt.look] at @s positioned ~ ~1.5 ~ run say gt dump looker found at @s
+	REPEAT (0, 13) as l {
+		execute if score #left rwysow matches <%l%> run say gt dump #left is <%l%>
+	}
+	execute if score #mode rwysow matches 0 run say gt dump #mode is 0
+	execute if score #mode rwysow matches 1 run say gt dump #mode is 1
+	execute positioned ~0.5 ~0.5 ~2.5 store result score #d rwysow_test if entity @e[type=minecraft:item,distance=..3]
+	REPEAT (0, 5) as n {
+		execute if score #d rwysow_test matches <%n%> run say gt dump <%n%> items near the crop
+	}
+	execute positioned ~0.5 ~0.5 ~2.5 as @e[type=minecraft:item,distance=..3] run say gt dump item @s
+	execute if block ~ ~1 ~2 minecraft:air run say gt dump upper cell is air
+	execute unless block ~ ~1 ~2 minecraft:air run say gt dump upper cell is NOT air
+	execute positioned ~0.5 ~0.5 ~2.5 if entity @e[type=minecraft:interaction,distance=..3] run say gt dump an interaction entity is there
+	execute unless entity @e[type=minecraft:armor_stand,tag=tt.look] run say gt dump no looker
+}
+
+function lib/dump_say {
+	$say gt dump markers=$(markers) outlines=$(outlines)
+}
+
+# Macro, name from storage rwysow_test:cur. Says PASS or FAIL, say is what reaches a headless server log, tellraw has no player to send to
+function lib/report {
+	$execute if score #ok rwysow_test matches 1 run say gt PASS $(name)
+	$execute unless score #ok rwysow_test matches 1 run say gt FAIL $(name)
+}
+#endregion
+
+#region Load
+function load/check {
+	execute unless score #config.show_outline rwysow matches 0..1 run scoreboard players set #ok rwysow_test 0
+	execute unless score #config.enable_pitcher_crop rwysow matches 0..1 run scoreboard players set #ok rwysow_test 0
+	# eq keeps the constant 2 of the tick throttle here
+	execute unless score 2 rwysow.eq.const matches 2 run scoreboard players set #ok rwysow_test 0
+}
+#endregion
+
+#region Single block crops
+REPEAT (crops) as c {
+	function crop/<%c.name%>/plant {
+		setblock ~ ~-1 ~2 <%c.base%>
+		setblock ~ ~ ~2 <%c.mature%>
+	}
+
+	# A mature crop gets a marker and an outline, and the click harvests it: the block resets, the loot drops and the marker goes
+	function crop/<%c.name%>/run {
+		function rwysow_test:lib/begin
+		function rwysow_test:crop/<%c.name%>/plant
+		function rwysow_test:lib/look_low_mark
+		function rwysow_test:lib/expect_marker
+		function rwysow_test:lib/look_low_harvest
+		execute unless block ~ ~ ~2 <%c.reset%> run scoreboard players set #ok rwysow_test 0
+		execute positioned ~0.5 ~0.5 ~2.5 unless entity @e[type=minecraft:item,distance=..2] run scoreboard players set #ok rwysow_test 0
+		function rwysow_test:lib/expect_none
+	}
+
+	# An immature crop gets nothing
+	function immature/<%c.name%> {
+		function rwysow_test:lib/begin
+		setblock ~ ~-1 ~2 <%c.base%>
+		setblock ~ ~ ~2 <%c.immature%>
+		function rwysow_test:lib/look_low_mark
+		function rwysow_test:lib/expect_none
+	}
+}
+#endregion
+
+#region Stacks
+REPEAT ([{name: "cactus"}, {name: "sugar_cane"}]) as c {
+	# 3 tall on sand at the crop cell. Sugar cane needs water beside its base or it pops at once, a placed cactus needs open sides
+	function stack/<%c.name%>/plant {
+		setblock ~ ~-1 ~2 minecraft:sand
+		setblock ~1 ~-1 ~2 minecraft:water
+		setblock ~ ~ ~2 minecraft:<%c.name%>
+		setblock ~ ~1 ~2 minecraft:<%c.name%>
+		setblock ~ ~2 ~2 minecraft:<%c.name%>
+	}
+
+	# Left is the base alone and one item per cut block, 2
+	function stack/<%c.name%>/check {
+		execute unless block ~ ~ ~2 minecraft:<%c.name%> run scoreboard players set #ok rwysow_test 0
+		execute unless block ~ ~1 ~2 minecraft:air run scoreboard players set #ok rwysow_test 0
+		execute unless block ~ ~2 ~2 minecraft:air run scoreboard players set #ok rwysow_test 0
+		execute positioned ~0.5 ~1 ~2.5 store result score #items rwysow_test if entity @e[type=minecraft:item,distance=..4]
+		execute unless score #items rwysow_test matches 2 run scoreboard players set #ok rwysow_test 0
+		function rwysow_test:lib/expect_none
+	}
+
+	# One marker over the whole stack, 3 blocks and a margin tall
+	function stack/<%c.name%>/run {
+		function rwysow_test:lib/begin
+		function rwysow_test:stack/<%c.name%>/plant
+		function rwysow_test:lib/look_low_mark
+		function rwysow_test:lib/expect_marker
+		execute positioned ~0.5 ~ ~2.5 unless entity @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.5,nbt={height:3.0625f}] run scoreboard players set #ok rwysow_test 0
+		function rwysow_test:lib/look_low_harvest
+		function rwysow_test:stack/<%c.name%>/check
+	}
+
+	# A click on the second block cuts the same stack
+	function stack/<%c.name%>/up {
+		function rwysow_test:lib/begin
+		function rwysow_test:stack/<%c.name%>/plant
+		function rwysow_test:lib/look_up_mark
+		function rwysow_test:lib/expect_marker
+		function rwysow_test:lib/look_up_harvest
+		function rwysow_test:stack/<%c.name%>/check
+	}
+
+	# A single block is not a stack
+	function stack/<%c.name%>/single {
+		function rwysow_test:lib/begin
+		setblock ~ ~-1 ~2 minecraft:sand
+		setblock ~1 ~-1 ~2 minecraft:water
+		setblock ~ ~ ~2 minecraft:<%c.name%>
+		function rwysow_test:lib/look_low_mark
+		function rwysow_test:lib/expect_none
+		function rwysow_test:lib/look_low_harvest
+		execute unless block ~ ~ ~2 minecraft:<%c.name%> run scoreboard players set #ok rwysow_test 0
+		execute positioned ~0.5 ~1 ~2.5 if entity @e[type=minecraft:item,distance=..4] run scoreboard players set #ok rwysow_test 0
+	}
+}
+
+# A cactus flower on top is part of the stack: it widens the marker by a block, is cut with it and drops its own item
+function stack/cactus_flower/run {
+	function rwysow_test:lib/begin
+	function rwysow_test:stack/cactus/plant
+	setblock ~ ~3 ~2 minecraft:cactus_flower
+	function rwysow_test:lib/look_low_mark
+	function rwysow_test:lib/expect_marker
+	execute positioned ~0.5 ~ ~2.5 unless entity @e[type=minecraft:interaction,tag=rwysow.marker,distance=..0.5,nbt={height:4.0625f}] run scoreboard players set #ok rwysow_test 0
+	function rwysow_test:lib/look_low_harvest
+	execute unless block ~ ~ ~2 minecraft:cactus run scoreboard players set #ok rwysow_test 0
+	execute unless block ~ ~1 ~2 minecraft:air run scoreboard players set #ok rwysow_test 0
+	execute unless block ~ ~2 ~2 minecraft:air run scoreboard players set #ok rwysow_test 0
+	execute unless block ~ ~3 ~2 minecraft:air run scoreboard players set #ok rwysow_test 0
+	execute positioned ~0.5 ~1 ~2.5 store result score #items rwysow_test if entity @e[type=minecraft:item,distance=..4]
+	execute unless score #items rwysow_test matches 3 run scoreboard players set #ok rwysow_test 0
+	execute positioned ~0.5 ~1 ~2.5 unless entity @e[type=minecraft:item,distance=..4,nbt={Item:{id:"minecraft:cactus_flower"}}] run scoreboard players set #ok rwysow_test 0
+	function rwysow_test:lib/expect_none
+}
+
+# A lone cactus with a flower on it is still not a stack
+function stack/cactus_flower/single {
+	function rwysow_test:lib/begin
+	setblock ~ ~-1 ~2 minecraft:sand
+	setblock ~ ~ ~2 minecraft:cactus
+	setblock ~ ~1 ~2 minecraft:cactus_flower
+	function rwysow_test:lib/look_low_mark
+	function rwysow_test:lib/expect_none
+	function rwysow_test:lib/look_low_harvest
+	execute unless block ~ ~ ~2 minecraft:cactus run scoreboard players set #ok rwysow_test 0
+	execute unless block ~ ~1 ~2 minecraft:cactus_flower run scoreboard players set #ok rwysow_test 0
+}
+#endregion
+
+#region Marker lifetime
+function expiry/start {
+	function rwysow_test:lib/begin
+	function rwysow_test:crop/wheat/plant
+	function rwysow_test:lib/look_low_mark
+	function rwysow_test:lib/expect_marker
+}
+
+function expiry/check {
+	function rwysow_test:lib/expect_none
+}
+#endregion
+
+#region Pitcher crop
+function pitcher/plant {
+	setblock ~ ~-1 ~2 minecraft:farmland[moisture=7]
+	setblock ~ ~ ~2 minecraft:pitcher_crop[age=4,half=lower]
+	setblock ~ ~1 ~2 minecraft:pitcher_crop[age=4,half=upper]
+}
+
+# Off by default, so a ripe pitcher crop is left alone
+function pitcher/off {
+	function rwysow_test:lib/begin
+	function rwysow_test:pitcher/plant
+	function rwysow_test:lib/look_low_mark
+	function rwysow_test:lib/expect_none
+}
+
+function pitcher/check_harvest {
+	execute unless block ~ ~ ~2 minecraft:pitcher_crop[age=0,half=lower] run scoreboard players set #ok rwysow_test 0
+	execute unless block ~ ~1 ~2 minecraft:air run scoreboard players set #ok rwysow_test 0
+	# Clearing the upper half first would drop the plant twice, so exactly one stack
+	execute positioned ~0.5 ~0.5 ~2.5 store result score #drops rwysow_test if entity @e[type=minecraft:item,distance=..2]
+	execute unless score #drops rwysow_test matches 1 run scoreboard players set #ok rwysow_test 0
+	function rwysow_test:lib/expect_none
+}
+
+# Looking at the lower half
+function pitcher/lower {
+	function rwysow_test:lib/begin
+	scoreboard players set #config.enable_pitcher_crop rwysow 1
+	function rwysow_test:pitcher/plant
+	function rwysow_test:lib/look_low_mark
+	function rwysow_test:lib/expect_marker
+	function rwysow_test:lib/look_low_harvest
+	function rwysow_test:pitcher/check_harvest
+}
+
+# Looking at the upper half gets the same marker, over the lower block
+function pitcher/upper {
+	function rwysow_test:lib/begin
+	scoreboard players set #config.enable_pitcher_crop rwysow 1
+	function rwysow_test:pitcher/plant
+	function rwysow_test:lib/look_up_mark
+	function rwysow_test:lib/expect_marker
+	function rwysow_test:lib/look_up_harvest
+	function rwysow_test:pitcher/check_harvest
+}
+#endregion
+
+#region Outline toggle
+function outline_off/run {
+	function rwysow_test:lib/begin
+	scoreboard players set #config.show_outline rwysow 0
+	function rwysow_test:crop/wheat/plant
+	function rwysow_test:lib/look_low_mark
+	function rwysow_test:lib/count
+	execute unless score #markers rwysow_test matches 1 run scoreboard players set #ok rwysow_test 0
+	execute unless score #outlines rwysow_test matches 0 run scoreboard players set #ok rwysow_test 0
+}
+#endregion
+
+#region Gametest poll functions
+# One poll function per test, run every tick by the repeating command block of its structure, at the command block. A marker at the block
+# counts ticks. A step that leaves #ok at 0 powers the fail block, the last step passing powers the accept block. Redstone goes at ~5 ~1 ~
+# for fail and ~3 ~1 ~ for accept, above the test blocks of the scaffold, see gametest/generate.js. A test removes its own command block when
+# it ends. The runner clears a finished test's entities, and a command block left running would count from 0 again and replay the scenario
+# over whichever test is running now. Every step prints its result once
+<%%
+for (const t of gametest.tests) {
+	const last = Math.max(...t.steps.map(([age]) => age));
+	const lines = [
+		// The test's window on the global clock, which only runs once the arena is loaded. An unset #clock is not in any range
+		`\texecute unless score #clock rwysow_test matches ${t.start}.. run return 0`,
+		"\texecute unless entity @e[type=minecraft:marker,tag=gt.mark,distance=..0.6] run summon minecraft:marker ~ ~ ~ {Tags:[\"gt.mark\"]}",
+		"\tscoreboard players add @e[type=minecraft:marker,tag=gt.mark,distance=..0.6] gt.age 1",
+		"\tscoreboard players operation #age rwysow_test = @e[type=minecraft:marker,tag=gt.mark,distance=..0.6,limit=1] gt.age",
+	];
+	t.steps.forEach(([age, fn], i) => {
+		lines.push(`\texecute if score #age rwysow_test matches ${age} run function rwysow_test:gt/${t.id}_${i}`);
+		const body = [
+			`\tsay gt run ${t.id} step ${i + 1}`,
+			"\tscoreboard players set #ok rwysow_test 1",
+			`\texecute in minecraft:overworld positioned ${t.x}.0 ${t.y}.0 100.0 run function rwysow_test:${fn}`,
+			`\tdata modify storage rwysow_test:cur name set value "${t.id} step ${i + 1} of ${t.steps.length}"`,
+			"\texecute unless score #ok rwysow_test matches 1 run function rwysow_test:lib/report with storage rwysow_test:cur",
+			`\texecute unless score #ok rwysow_test matches 1 in minecraft:overworld positioned ${t.x}.0 ${t.y}.0 100.0 run function rwysow_test:lib/dump`,
+			"\texecute unless score #ok rwysow_test matches 1 run setblock ~5 ~1 ~ minecraft:redstone_block",
+			"\texecute unless score #ok rwysow_test matches 1 run setblock ~ ~ ~ minecraft:air",
+		];
+		if (age === last) {
+			body.push(`\tdata modify storage rwysow_test:cur name set value "${t.id}"`);
+			body.push("\texecute if score #ok rwysow_test matches 1 run function rwysow_test:lib/report with storage rwysow_test:cur");
+			body.push("\texecute if score #ok rwysow_test matches 1 run setblock ~3 ~1 ~ minecraft:redstone_block");
+			body.push("\texecute if score #ok rwysow_test matches 1 run setblock ~ ~ ~ minecraft:air");
+		}
+		emit.mcb(`function gt/${t.id}_${i} {\n${body.join("\n")}\n}`);
+	});
+	emit.mcb(`function gt/${t.id} {\n${lines.join("\n")}\n}`);
+}
+%%>
+#endregion

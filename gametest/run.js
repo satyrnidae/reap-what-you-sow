@@ -1,0 +1,92 @@
+// Runs every test instance headless against a fresh build. Steps: mcb build, generate the gametest pack, assemble a packs folder next to
+// the server jar, run net.minecraft.gametest.Main, print each result, exit with the number of failures.
+// Environment: GAMETEST_SERVER, a folder holding server.jar, default .gametest/server, see gametest/fetch-server.js.
+//              GAMETEST_JAVA, a Java 25 executable, default java on the path.
+//              GAMETEST_TESTS, a test filter, default rwysow_test:*.
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const { generate } = require("./generate.js");
+
+const root = path.resolve(__dirname, "..");
+const server = path.resolve(process.env.GAMETEST_SERVER || path.join(root, ".gametest", "server"));
+const java = process.env.GAMETEST_JAVA || "java";
+const filter = process.env.GAMETEST_TESTS || "rwysow_test:*";
+
+function run(cmd, args, cwd) {
+	const r = spawnSync(cmd, args, { cwd, stdio: "inherit" });
+	if (r.error) throw r.error;
+	return r.status;
+}
+
+if (!fs.existsSync(path.join(server, "server.jar"))) {
+	console.error(`no server.jar in ${server}, run node gametest/fetch-server.js or set GAMETEST_SERVER`);
+	process.exit(-1);
+}
+// mcb exits 0 on a compile error and keeps the last good output, so the build output is read for it, a stale pack would pass or fail for the wrong reasons
+function build(cwd) {
+	const b = spawnSync(process.execPath, [path.join(root, "node_modules", "mc-build", "dist", "mcb.js"), "build"], { cwd, encoding: "utf8" });
+	process.stdout.write(b.stdout || "");
+	process.stderr.write(b.stderr || "");
+	if (b.status !== 0 || /(Compiler|Parser|Syntax) ?Error/i.test(`${b.stdout}${b.stderr}`)) {
+		console.error(`build failed in ${cwd}, not running tests`);
+		process.exit(-1);
+	}
+}
+// Two projects, the pack itself and the test functions in gametest/mc. The test namespace never builds into the pack's data folder, a zip of
+// that folder is the release. A leftover rwysow_test there, from before the split or a stray build, fails the run
+if (fs.existsSync(path.join(root, "data", "rwysow_test"))) {
+	console.error("data/rwysow_test exists, the test namespace must not be built into the pack, delete it");
+	process.exit(-1);
+}
+build(root);
+build(path.join(root, "gametest", "mc"));
+const gametestPack = generate(root);
+
+// A run of its own, so sessions testing at the same time don't clobber each other's packs, universe and report. The folder is the working
+// directory of the server, which also reads its server.properties from there, with a port nobody else is using. Libraries and versions of
+// the bundler stay shared, in the server folder.
+const runDir = path.join(server, "runs", `${process.pid}-${Date.now()}`);
+fs.mkdirSync(runDir, { recursive: true });
+function freePort() {
+	const r = spawnSync(process.execPath, ["-e", "const s=require('node:net').createServer();s.listen(0,()=>{console.log(s.address().port);s.close()})"], { encoding: "utf8" });
+	return Number(r.stdout.trim());
+}
+const port = freePort();
+fs.writeFileSync(path.join(runDir, "server.properties"), `server-port=${port}\nquery.port=${port}\nenable-query=false\nenable-rcon=false\n`);
+fs.writeFileSync(path.join(runDir, "eula.txt"), "eula=true\n");
+process.on("exit", () => fs.rmSync(runDir, { recursive: true, force: true }));
+
+const packs = path.join(runDir, "packs");
+fs.rmSync(packs, { recursive: true, force: true });
+fs.mkdirSync(path.join(packs, "rwysow"), { recursive: true });
+fs.copyFileSync(path.join(root, "pack.mcmeta"), path.join(packs, "rwysow", "pack.mcmeta"));
+fs.cpSync(path.join(root, "data"), path.join(packs, "rwysow", "data"), { recursive: true });
+fs.cpSync(gametestPack, path.join(packs, "gametest"), { recursive: true });
+
+const report = path.join(runDir, "report.xml");
+const result = spawnSync(java, ["-DbundlerMainClass=net.minecraft.gametest.Main", `-DbundlerRepoDir=${server}`, "-jar", path.join(server, "server.jar"), "--packs", "./packs", "--universe", "./uni", "--report", "./report.xml", "--tests", filter, "--port", String(port)], { cwd: runDir, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+if (result.error) throw result.error;
+const status = result.status;
+const serverLog = `${result.stdout || ""}${result.stderr || ""}`;
+// The newest run's log, for whoever looks after a run, each run has its own folder and it is gone when the run is
+fs.writeFileSync(path.join(server, "run.log"), serverLog);
+// The log lines the tests write with say, the dump of a failing step and the PASS and FAIL of each step, plus anything the server complains about
+for (const line of serverLog.split("\n")) if (/\bgt (dump|FAIL|PASS|shape)\b/.test(line)) console.log(line.replace(/^\[[^\]]*\] \[[^\]]*\]: (\[[^\]]*\] )*/, "  "));
+// A function that fails to parse only warns and the rest of the pack carries on, so it fails the run here, a test calling it would otherwise do nothing
+const loadErrors = [...serverLog.matchAll(/Failed to load function (\S+)/g)].map((m) => m[1]);
+for (const name of new Set(loadErrors)) console.error(`FAIL function did not load: ${name}`);
+if (/Registry loading errors/.test(serverLog)) console.error("FAIL registry loading errors, see run.log");
+
+if (!fs.existsSync(report)) { console.error(`no report written, exit ${status}`); process.exit(status === 0 ? -1 : status); }
+const xml = fs.readFileSync(report, "utf8");
+const cases = [...xml.matchAll(/<testcase [^>]*name="([^"]+)"[^>]*?(?:\/>|>([\s\S]*?)<\/testcase>)/g)];
+let failures = 0;
+for (const [, name, body] of cases) {
+	const failure = body && body.match(/<failure message="([^"]*)"/);
+	if (failure) failures += 1;
+	console.log(`${failure ? "FAIL" : "PASS"} ${name}${failure ? `  ${failure[1]}` : ""}`);
+}
+console.log(`${cases.length - failures}/${cases.length} passed`);
+const broken = new Set(loadErrors).size + (/Registry loading errors/.test(serverLog) ? 1 : 0);
+process.exit(failures + broken || (status === 0 ? 0 : status));
