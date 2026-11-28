@@ -7,10 +7,10 @@
     "build": "mcb build",
     "watch": "mcb watch",
     "test": "npm run test:unit && npm run gametest",
-    "test:unit": "npm run build && python -m unittest discover -s tests -v",
+    "test:unit": "npm run build && node --test",
     "gametest": "node gametest/run.js",
     "gametest:fetch": "node gametest/fetch-server.js",
-    "check": "python scripts/check_cmds.py"
+    "check": "node scripts/check_cmds.js"
   },
   "dependencies": {
     "mc-build": "4.2.0"

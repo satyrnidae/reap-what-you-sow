@@ -39,7 +39,7 @@ npm run build
 npm test
 ```
 
-`npm test` runs the structural unit tests, then the gametests on a headless server: `node gametest/fetch-server.js` downloads the jar once and Java 25 is needed. `python scripts/check_cmds.py` checks every command against the client jar harness.
+`npm test` runs the structural unit tests, then the gametests on a headless server: `node gametest/fetch-server.js` downloads the jar once and Java 25 is needed. `npm run check` checks every command against the client jar harness.
 
 ## AI Usage Disclosure
 

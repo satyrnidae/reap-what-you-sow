@@ -205,7 +205,7 @@ git commit -m "feat: hoe wear on harvest"
 - [ ] **Step 1: Adapt the sibling `scripts/check_cmds.py`.** Point `ROOT`-relative `FUNCS` at `data/rwysow/function`, drop wolves-specific `SAMPLE` entries, keep the harness paths from environment variables as in the sibling.
 - [ ] **Step 2: Run it.**
 
-Run: `python scripts/check_cmds.py`
+Run: `node scripts/check_cmds.js`
 Expected: exits 0, no parse errors.
 
 - [ ] **Step 3: Run the Review Focus checklist in world.** Every line under Review Focus, plus: adventure mode, Fortune III hoe, silk touch hoe, two players harvesting in the same tick.
